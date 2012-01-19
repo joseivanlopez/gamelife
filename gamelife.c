@@ -1,4 +1,11 @@
 /*
+Opciones por añadir:
+  -cambiar tiempo de pausa entre iteracion e iteración en la animación.
+  -añadir opción para que guarde en fichero o no.
+  -añadir cálculo de tiempos de ejecucion
+*/
+
+/*
  *  Libraries
  */
 #include <stdio.h>  /* Standard input-output                        */
@@ -12,12 +19,14 @@
 /*
  *  Macros
  */
-#define PACKAGE    "gamelife"     /* Program name                     */
-#define DEFITER    100            /* Default number of iterations     */
-#define DEFROWS    9              /* Default number of rows           */
-#define DEFCOLUMNS 36             /* Default number of columns        */
-#define DEFINFILE  "example1.txt" /* Default input file               */
-#define DEFOUTFILE "out.txt"      /* Default output file              */
+#define PACKAGE      "gamelife"     /* Program name                     */
+#define DEFITER      100            /* Default number of iterations     */
+#define DEFROWS      9              /* Default number of rows           */
+#define DEFCOLUMNS   36             /* Default number of columns        */
+#define DEFINFILE    "example1.txt" /* Default input file               */
+#define DEFOUTFILE   "out.txt"      /* Default output file              */
+#define DEFANIMATION 0              /* Default animation state          */
+#define DEFMETHOD    0              /* Default method                   */
 
 /*
  *  Main parameters struct (go to help() implementation, line number 266)
@@ -42,10 +51,10 @@ void  initialize_world(int          **world,
                        const struct args_t args);
 
 int   alive_neighbours(int **world,
-                      int rows,
-                      int columns,
-                      int row,
-                      int column);
+                       int rows,
+                       int columns,
+                       int row,
+                       int column);
 
 void  print_world(int  **world,
                   int  rows,
@@ -83,8 +92,8 @@ int main(int argc, char* argv[])
                         .columns = DEFCOLUMNS,
                         .inFileName = DEFINFILE,
                         .outFileName = DEFOUTFILE,
-                        .animation = 0,
-                        .method = 0};
+                        .animation = DEFANIMATION,
+                        .method = DEFMETHOD};
   int option;
 
   /* Parse command-line options */
@@ -163,10 +172,10 @@ void openmp(int **world, int **nextworld, int rows, int columns)
   int column;
   int neighbours;
   
-  #pragma omp parallel for private(column, neighbours) if(rows >= columns)
+  #pragma omp parallel for private(column, neighbours)// if(rows >= columns)
   for(row=0; row<rows; row++)
   {
-    #pragma omp parallel for private(row, neighbours) if(columns > rows)
+    //#pragma omp parallel for private(row, neighbours)// if(columns > rows)
     for(column=0; column<columns; column++)
     {
       neighbours = alive_neighbours(world, rows, columns, row, column);
