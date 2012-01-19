@@ -1,4 +1,4 @@
 To compile:
-$ gcc -fopenmp -c gamelife.c -o gamelife
+$ gcc -fopenmp gamelife.c -o gamelife
 
 
