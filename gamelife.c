@@ -1,11 +1,4 @@
 /*
-Opciones por añadir:
-  -cambiar tiempo de pausa entre iteracion e iteración en la animación.
-  -añadir opción para que guarde en fichero o no.
-  -añadir cálculo de tiempos de ejecucion
-*/
-
-/*
  *  Libraries
  */
 #include <stdio.h>  /* Standard input-output                        */
