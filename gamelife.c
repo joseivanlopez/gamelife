@@ -143,47 +143,6 @@ int main(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
-/*
- *  Cellular automata sequential implementation procedure
- */
-void sequential(int **world, int **nextworld, int rows, int columns)
-{
-  int row;
-  int column;
-  int neighbours;
-
-  for(row=0; row<rows; row++)
-  {
-    for(column=0; column<columns; column++)
-    {
-      neighbours = alive_neighbours(world, rows, columns, row, column);
-      if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
-      if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
-    }
-  }
-}
-
-/*
- *  Cellular automata OpenMP implementation procedure
- */
-void openmp(int **world, int **nextworld, int rows, int columns)
-{
-  int row;
-  int column;
-  int neighbours;
-  
-  #pragma omp parallel for private(column, neighbours)// if(rows >= columns)
-  for(row=0; row<rows; row++)
-  {
-    //#pragma omp parallel for private(row, neighbours)// if(columns > rows)
-    for(column=0; column<columns; column++)
-    {
-      neighbours = alive_neighbours(world, rows, columns, row, column);
-      if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
-      if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
-    }
-  }
-}
 
 /*
  *  Cellular automata procedure calling
@@ -198,6 +157,8 @@ void gamelife(const struct args_t args)
   int  **nextworld;
   int  **tmpworld;
   FILE *outFile; 
+
+  //t = omp_get_num_proc(); omp_set_num_threads(t);
 
   outFile = fopen(args.outFileName, "w");
   
@@ -329,20 +290,74 @@ void print_world(int **world, int rows, int columns, FILE *outFile, int animatio
 }
 
 /*
+ *  Cellular automata sequential implementation procedure
+ */
+void sequential(int **world, int **nextworld, int rows, int columns)
+{
+  int row;
+  int column;
+  int neighbours;
+
+  for(row=0; row<rows; row++)
+  {
+    for(column=0; column<columns; column++)
+    {
+      neighbours = alive_neighbours(world, rows, columns, row, column);
+      if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
+      if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
+    }
+  }
+}
+
+/*
+ *  Cellular automata OpenMP implementation procedure
+ */
+void openmp(int **world, int **nextworld, int rows, int columns)
+{
+  int row;
+  int column;
+  int neighbours;
+  
+  #pragma omp parallel for private(column, neighbours)// if(rows >= columns)
+  for(row=0; row<rows; row++)
+  {
+    //#pragma omp parallel for private(row, neighbours)// if(columns > rows)
+    for(column=0; column<columns; column++)
+    {
+      neighbours = alive_neighbours(world, rows, columns, row, column);
+      if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
+      if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
+    }
+  }
+}
+
+/*
  *  Procedure to print help information
  */
-void help(int exitval)
-{
-  printf("NAME\n");
-  printf("%s -- \n", PACKAGE); 
-  printf("%s [-h] [-a] [-f FILE] [-r NUM] [-c NUM] [-o FILE] [-m METHOD]\n\n", PACKAGE);
-  printf("  -h               print this help and exit\n");
-  printf("  -a               show animation\n\n");
-  printf("  -f FILE          set intput file\n");
-  printf("  -r NUM           number of rows\n");
-  printf("  -c NUM           number of columns\n");
-  printf("  -o FILE          set output file\n\n");
-  printf("  -m NUM           process method (0 = sequential, 1 = OpenMP, 2 = MPI)\n\n");
+void help(int exitval) {
+  if(exitval){
+    printf("%s, show working example\n", PACKAGE); 
+    printf("%s [-h] [-a] [-f FILE] [-r NUM] [-c NUM] [-o FILE] [-m METHOD]\n\n", PACKAGE);
+  }
+  else {
+    printf("NAME\n");
+    printf("\t%s -- The game of life, introduction to parallel computing \n\n", PACKAGE); 
+    
+    printf("SYNOPSIS\n");
+    printf("\t%s [options]\n\n", PACKAGE);
+    
+    printf("DESCRIPTON\n");
+    printf("\n\n");
+
+    printf("OPTIONS\n");
+    printf("\t%s [-h] [-a] [-f FILE] [-r NUM] [-c NUM] [-o FILE] [-m METHOD]\n\n", PACKAGE);
+    printf("\t-h\n\t\tprint this help and exit\n\n");
+    printf("\t-a\n\t\tshow animation\n\n");
+    printf("\t-f infile\n\t\tset intput file\n\n");
+    printf("\t-r numrows\n\t\tnumber of rows\n\n");
+    printf("\t-c numcolums\n\t\tnumber of columns\n\n");
+    printf("\t-o outfile\n\t\tset output file\n\n");
+  }
   
   exit(exitval);
 }
