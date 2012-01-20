@@ -1,10 +1,4 @@
 /*
-Opciones por añadir:
-  -añadir opción para que guarde en fichero o no.
-  -añadir cálculo de tiempos de ejecucion
-*/
-
-/*
  *  Libraries
  */
 #include <stdio.h>  /* Standard input-output                        */
@@ -58,6 +52,16 @@ int   alive_neighbours(int **world,
                        int columns,
                        int row,
                        int column);
+
+void  sequential(int **world,
+                 int **nextworld,
+                 int rows,
+                 int columns);
+
+void  openmp(int **world,
+             int **nextworld,
+             int rows,
+             int columns);
 
 void  print_world(int  **world,
                   FILE *outFile,
@@ -140,6 +144,7 @@ int main(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+
 void gamelife(const struct args_t args)
 {
   int  iter;
@@ -175,65 +180,31 @@ void gamelife(const struct args_t args)
     print_world(world, outFile, -1, args);
   }
 
-  /* sequential procedure */
-  if(args.method == 0)
+  for(iter=0; iter<args.iterations; iter++)
   {
-    for(iter=0; iter<args.iterations; iter++)
+    switch(args.method) 
     {
-      for(row=0; row<args.rows; row++)
-      {
-        for(column=0; column<args.columns; column++)
-        {
-          neighbours = alive_neighbours(world, args.rows, args.columns, row, column);
-          if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
-          if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
-        }
-      }
-
-      /* Actualize world */
-      tmpworld = world;
-      world = nextworld;
-      nextworld = tmpworld;
-
-      if(args.print)
-      {
-        /* Print iteration */
-        print_world(world, outFile, iter, args);
-      }
+      case 0:
+        sequential(world, nextworld, args.rows, args.columns);
+        break;
+      case 1:
+        sequential(world, nextworld, args.rows, args.columns);
+        break;
+      case 2:
+        //mpi(world, nextworld, args.rows, args.columns);
+        break;
     }
-  }
-  /* OpenMP procedure */
-  if(args.method == 1)
-  {
-    for(iter=0; iter<args.iterations; iter++)
+
+    /* Actualize world */
+    tmpworld = world;
+    world = nextworld;
+    nextworld = tmpworld;
+
+    if(args.print)
     {
-      #pragma omp parallel for private(column, neighbours)
-      for(row=0; row<args.rows; row++)
-      {
-        for(column=0; column<args.columns; column++)
-        {
-        neighbours = alive_neighbours(world, args.rows, args.columns, row, column);
-        if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
-        if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
-        }
-      }
-
-      /* Actualize world */
-      tmpworld = world;
-      world = nextworld;
-      nextworld = tmpworld;
-
-      if(args.print)
-      {
-        /* Print iteration */
-        print_world(world, outFile, iter, args);
-      }
+      /* Print iteration */
+      print_world(world, outFile, iter, args);
     }
-  }
-
-  /* MPI */
-  if(args.method == 2)
-  {
   }
 
   printf("\nEnd of %s\n", PACKAGE);
@@ -306,6 +277,48 @@ int alive_neighbours(int **world, int rows, int columns, int row, int column)
          world[rowRight][columnUp] + 
          world[rowRight][column] + 
          world[rowRight][columnBottom]; 
+}
+
+
+/*
+ *  Cellular automata sequential implementation procedure
+ */
+void sequential(int **world, int **nextworld, int rows, int columns)
+{
+  int row;
+  int column;
+  int neighbours;
+
+  for(row=0; row<rows; row++)
+  {
+    for(column=0; column<columns; column++)
+    {
+      neighbours = alive_neighbours(world, rows, columns, row, column);
+      if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
+      if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
+    }
+  }
+}
+
+/*
+ *  Cellular automata OpenMP implementation procedure
+ */
+void openmp(int **world, int **nextworld, int rows, int columns)
+{
+  int row;
+  int column;
+  int neighbours;
+  
+  #pragma omp parallel for private(column, neighbours)
+  for(row=0; row<rows; row++)
+  {
+    for(column=0; column<columns; column++)
+    {
+      neighbours = alive_neighbours(world, rows, columns, row, column);
+      if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
+      if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
+    }
+  }
 }
 
 /*
