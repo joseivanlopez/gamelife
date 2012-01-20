@@ -1,4 +1,10 @@
 /*
+Opciones por añadir:
+  -añadir opción para que guarde en fichero o no.
+  -añadir cálculo de tiempos de ejecucion
+*/
+
+/*
  *  Libraries
  */
 #include <stdio.h>  /* Standard input-output                        */
@@ -354,19 +360,33 @@ void print_world(int **world, FILE *outFile, int iteration, const struct args_t 
 /*
  *  Procedure to print help information
  */
-void help(int exitval)
-{
-  printf("NAME\n");
-  printf("%s -- \n", PACKAGE); 
-  printf("%s [-h] [-a PAUSE] [-f FILE] [-r NUM] [-c NUM] [-o FILE] [-m METHOD] [p]\n\n", PACKAGE);
-  printf("  -h               print this help and exit\n");
-  printf("  -a NUM           show animation with a frame pause in miliseconds\n\n");
-  printf("  -f FILE          set intput file\n");
-  printf("  -r NUM           number of rows\n");
-  printf("  -c NUM           number of columns\n");
-  printf("  -o FILE          set output file\n\n");
-  printf("  -m NUM           process method (0 = sequential, 1 = OpenMP, 2 = MPI)\n\n");
-  printf("  -p               print results \n\n");
+void help(int exitval) {
+  if(exitval){
+    printf("%s, show working example\n", PACKAGE);
+    printf("%s [-h] [-a NUM] [-f FILE] [-r NUM] [-c NUM] [-o FILE] [-m METHOD] [-p]\n\n", PACKAGE);
+  }
+  else {
+    printf("NAME\n");
+    printf("\t%s -- The game of life, introduction to parallel computing \n\n", PACKAGE);
+    
+    printf("SYNOPSIS\n");
+    printf("\t%s [options]\n\n", PACKAGE);
+    
+    printf("DESCRIPTON\n");
+    printf("\n\n");
+
+    printf("OPTIONS\n");
+    printf("\t%s [-h] [-a NUM] [-f FILE] [-r NUM] [-c NUM] [-o FILE] [-m METHOD] [-p]\n\n", PACKAGE);
+    printf("\t-h\n\t\tprint this help and exit\n\n");
+    printf("\t-a pause \n\t\tshow animation with a pause time (in miliseconds) between frames\n\n");
+    printf("\t-f infile\n\t\tset intput file\n\n");
+    printf("\t-r numrows\n\t\tnumber of rows\n\n");
+    printf("\t-c numcolums\n\t\tnumber of columns\n\n");
+    printf("\t-o outfile\n\t\tset output file\n\n");
+    printf("\t-m method\n\t\tprocedure for compute next state (0=sequential, 1=OpenMP, 2=MPI)\n\n");
+    printf("\t-p\n\t\tset output file\n\n");
+  }
+  
   exit(exitval);
 }
 
