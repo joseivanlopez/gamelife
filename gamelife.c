@@ -19,20 +19,24 @@
 #define DEFINFILE    "example1.txt" /* Default input file               */
 #define DEFOUTFILE   "out.txt"      /* Default output file              */
 #define DEFANIMATION 0              /* Default animation state          */
+#define DEFPAUSE     100            /* Default pause time               */
 #define DEFMETHOD    0              /* Default method                   */
+#define DEFPRINT     0              /* Default print state              */
 
 /*
- *  Main parameters struct (go to help() implementation, line number 266)
+ *  Main parameters struct (go to help() implementation, line number 312)
  */
 struct args_t
 {
-    int        iterations;   /* -i option */
-    int        rows;         /* -r option */
-    int        columns;      /* -c option */
-    char       *inFileName;  /* -f option */
-    const char *outFileName; /* -o option */
-    int        animation;    /* -a option */
-    int        method;       /* -m option */
+    int        iterations;   /* -i option   */
+    int        rows;         /* -r option   */
+    int        columns;      /* -c option   */
+    char       *inFileName;  /* -f option   */
+    const char *outFileName; /* -o option   */
+    int        animation;    /* -a option   */
+    int        pause;        /* -a argument */
+    int        method;       /* -m option   */
+    int        print;        /* -p option   */
 };
 
 /*
@@ -50,21 +54,9 @@ int   alive_neighbours(int **world,
                        int column);
 
 void  print_world(int  **world,
-                  int  rows,
-                  int  columns,
                   FILE *outFile,
-                  int  animation,
-                  int  iteration);
-
-void  sequential(int **world,
-                 int **nextworld,
-                 int rows,
-                 int columns);
-
-void  openmp(int **world,
-             int **nextworld,
-             int rows,
-             int columns);
+                  int  iteration,
+                  const struct args_t args);
 
 void  help(int exitval);
 
@@ -86,11 +78,13 @@ int main(int argc, char* argv[])
                         .inFileName = DEFINFILE,
                         .outFileName = DEFOUTFILE,
                         .animation = DEFANIMATION,
-                        .method = DEFMETHOD};
+                        .pause = DEFPAUSE,
+                        .method = DEFMETHOD,
+                        .print = DEFPRINT};
   int option;
 
   /* Parse command-line options */
-  while((option = getopt(argc, argv, "hi:f:r:c:o:am:")) != -1)
+  while((option = getopt(argc, argv, "hi:f:r:c:o:a:m:p")) != -1)
   {
     switch(option)
     {
@@ -114,9 +108,13 @@ int main(int argc, char* argv[])
         break;
       case 'a':
         args.animation = 1;
+        args.pause = atoi(optarg);
         break;
       case 'm':
         args.method = atoi(optarg);
+        break;
+      case 'p':
+        args.print = 1;
         break;
       case ':':
         fprintf(stderr, "%s: Error - Option `%c' needs a value\n\n", PACKAGE, optopt);
@@ -136,10 +134,6 @@ int main(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
-
-/*
- *  Cellular automata procedure calling
- */
 void gamelife(const struct args_t args)
 {
   int  iter;
@@ -151,40 +145,102 @@ void gamelife(const struct args_t args)
   int  **tmpworld;
   FILE *outFile; 
 
-  //t = omp_get_num_proc(); omp_set_num_threads(t);
-
-  outFile = fopen(args.outFileName, "w");
-  
-  if(outFile == NULL)
+  /* Open output file */
+  if(args.print)
   {
-    fprintf(stderr, "%s: Error - Cannot open or create %s\n\n", PACKAGE, args.outFileName);
-    help(EXIT_FAILURE);
+    outFile = fopen(args.outFileName, "w");
+    if(outFile == NULL)
+    {
+      fprintf(stderr, "%s: Error - Cannot open or create %s\n\n", PACKAGE, args.outFileName);
+      help(EXIT_FAILURE);
+    }
   }
 
+  /* Allocate memory */
   world = get_memory(args.rows, args.columns);
   nextworld = get_memory(args.rows, args.columns);
 
+  /* Initialization of first iteration */
   initialize_world(world, args); 
 
-  print_world(world, args.rows, args.columns, outFile, args.animation, -1);
-
-  for(iter=0; iter<args.iterations; iter++)
+  if(args.print)
   {
-    if(args.method == 0) sequential(world, nextworld, args.rows, args.columns);
-    if(args.method == 1) openmp(world, nextworld, args.rows, args.columns);
+    /* Print first iteration */
+    print_world(world, outFile, -1, args);
+  }
 
-    tmpworld = world;
-    world = nextworld;
-    nextworld = tmpworld;
-    
-    print_world(world, args.rows, args.columns, outFile, args.animation, iter);
+  /* sequential procedure */
+  if(args.method == 0)
+  {
+    for(iter=0; iter<args.iterations; iter++)
+    {
+      for(row=0; row<args.rows; row++)
+      {
+        for(column=0; column<args.columns; column++)
+        {
+          neighbours = alive_neighbours(world, args.rows, args.columns, row, column);
+          if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
+          if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
+        }
+      }
+
+      /* Actualize world */
+      tmpworld = world;
+      world = nextworld;
+      nextworld = tmpworld;
+
+      if(args.print)
+      {
+        /* Print iteration */
+        print_world(world, outFile, iter, args);
+      }
+    }
+  }
+  /* OpenMP procedure */
+  if(args.method == 1)
+  {
+    for(iter=0; iter<args.iterations; iter++)
+    {
+      #pragma omp parallel for private(column, neighbours)
+      for(row=0; row<args.rows; row++)
+      {
+        for(column=0; column<args.columns; column++)
+        {
+        neighbours = alive_neighbours(world, args.rows, args.columns, row, column);
+        if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
+        if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
+        }
+      }
+
+      /* Actualize world */
+      tmpworld = world;
+      world = nextworld;
+      nextworld = tmpworld;
+
+      if(args.print)
+      {
+        /* Print iteration */
+        print_world(world, outFile, iter, args);
+      }
+    }
+  }
+
+  /* MPI */
+  if(args.method == 2)
+  {
   }
 
   printf("\nEnd of %s\n", PACKAGE);
 
+  /* Release memory */
   free_memory(nextworld, args.rows);
   free_memory(world, args.rows);
-  fclose(outFile);
+
+  if(args.print)
+  {
+    /* Close output file */
+    fclose(outFile);
+  }
 }
 
 /*
@@ -249,109 +305,68 @@ int alive_neighbours(int **world, int rows, int columns, int row, int column)
 /*
  *  Procedure to print world content
  */
-void print_world(int **world, int rows, int columns, FILE *outFile, int animation, int iteration)
+void print_world(int **world, FILE *outFile, int iteration, const struct args_t args)
 {
   int  row;
   int  column;
   char c;
   char spinner[4]={'/','-','\\','|'};
 
-  /* Restore cursor after the first iteration */
-  if(animation && iteration >= 0) printf("\033[%dA", rows);
-
-  if(!animation)
+  if(args.animation)
   {
+    /* With animation */
+    /* Restore cursor after the first iteration */
+    if(iteration >= 0) printf("\033[%dA", args.rows);
+
+    for(row=0; row<args.rows; row++)
+    {
+      for(column=0; column<args.columns; column++)
+      {
+        c = world[row][column] == 1 ? '*' : '.';
+        fputc(c, outFile);
+        printf("%c", c); 
+      }
+      fputc('\n', outFile);
+      printf("\033[K\n"); // clear and next line
+    }
+    usleep(args.pause*1000);
+  }
+  else
+  {
+    /* Without animation */
+    /* Restore cursor after the first iteration */
     printf("%c\b", spinner[(iteration+1)%sizeof(spinner)]);
     fflush(stdout);
+    for(row=0; row<args.rows; row++)
+    {
+      for(column=0; column<args.columns; column++)
+      {
+        c = world[row][column] == 1 ? '*' : '.';
+        fputc(c, outFile);
+      }
+      fputc('\n', outFile);
+    }
   }
 
-  for(row=0; row<rows; row++)
-  {
-    for(column=0; column<columns; column++)
-    {
-      c = world[row][column] == 1 ? '*' : '.';
-      fputc(c, outFile);
-      if(animation) printf("%c", c); 
-    }
-    fputc('\n', outFile);
-    if(animation) printf("\033[K\n"); // clear and next line
-  }
-      
-  if(animation) usleep(200000); //0-1000000 microseconds
-    
   fputc('\n', outFile);
-}
-
-/*
- *  Cellular automata sequential implementation procedure
- */
-void sequential(int **world, int **nextworld, int rows, int columns)
-{
-  int row;
-  int column;
-  int neighbours;
-
-  for(row=0; row<rows; row++)
-  {
-    for(column=0; column<columns; column++)
-    {
-      neighbours = alive_neighbours(world, rows, columns, row, column);
-      if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
-      if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
-    }
-  }
-}
-
-/*
- *  Cellular automata OpenMP implementation procedure
- */
-void openmp(int **world, int **nextworld, int rows, int columns)
-{
-  int row;
-  int column;
-  int neighbours;
-  
-  #pragma omp parallel for private(column, neighbours)// if(rows >= columns)
-  for(row=0; row<rows; row++)
-  {
-    //#pragma omp parallel for private(row, neighbours)// if(columns > rows)
-    for(column=0; column<columns; column++)
-    {
-      neighbours = alive_neighbours(world, rows, columns, row, column);
-      if(world[row][column] == 0) nextworld[row][column] = neighbours == 3 ? 1 : 0;
-      if(world[row][column] == 1) nextworld[row][column] = (neighbours == 2 || neighbours == 3) ? 1 : 0;
-    }
-  }
 }
 
 /*
  *  Procedure to print help information
  */
-void help(int exitval) {
-  if(exitval){
-    printf("%s, show working example\n", PACKAGE); 
-    printf("%s [-h] [-a] [-f FILE] [-r NUM] [-c NUM] [-o FILE] [-m METHOD]\n\n", PACKAGE);
-  }
-  else {
-    printf("NAME\n");
-    printf("\t%s -- The game of life, introduction to parallel computing \n\n", PACKAGE); 
-    
-    printf("SYNOPSIS\n");
-    printf("\t%s [options]\n\n", PACKAGE);
-    
-    printf("DESCRIPTON\n");
-    printf("\n\n");
-
-    printf("OPTIONS\n");
-    printf("\t%s [-h] [-a] [-f FILE] [-r NUM] [-c NUM] [-o FILE] [-m METHOD]\n\n", PACKAGE);
-    printf("\t-h\n\t\tprint this help and exit\n\n");
-    printf("\t-a\n\t\tshow animation\n\n");
-    printf("\t-f infile\n\t\tset intput file\n\n");
-    printf("\t-r numrows\n\t\tnumber of rows\n\n");
-    printf("\t-c numcolums\n\t\tnumber of columns\n\n");
-    printf("\t-o outfile\n\t\tset output file\n\n");
-  }
-  
+void help(int exitval)
+{
+  printf("NAME\n");
+  printf("%s -- \n", PACKAGE); 
+  printf("%s [-h] [-a PAUSE] [-f FILE] [-r NUM] [-c NUM] [-o FILE] [-m METHOD] [p]\n\n", PACKAGE);
+  printf("  -h               print this help and exit\n");
+  printf("  -a NUM           show animation with a frame pause in miliseconds\n\n");
+  printf("  -f FILE          set intput file\n");
+  printf("  -r NUM           number of rows\n");
+  printf("  -c NUM           number of columns\n");
+  printf("  -o FILE          set output file\n\n");
+  printf("  -m NUM           process method (0 = sequential, 1 = OpenMP, 2 = MPI)\n\n");
+  printf("  -p               print results \n\n");
   exit(exitval);
 }
 
