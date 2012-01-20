@@ -154,7 +154,8 @@ void gamelife(const struct args_t args)
   int  **world;
   int  **nextworld;
   int  **tmpworld;
-  FILE *outFile; 
+  FILE *outFile;
+  double start, stop; 
 
   /* Open output file */
   if(args.print)
@@ -180,6 +181,7 @@ void gamelife(const struct args_t args)
     print_world(world, outFile, -1, args);
   }
 
+  start = omp_get_wtime();
   for(iter=0; iter<args.iterations; iter++)
   {
     switch(args.method) 
@@ -207,7 +209,12 @@ void gamelife(const struct args_t args)
     }
   }
 
-  printf("\nEnd of %s\n", PACKAGE);
+  stop = omp_get_wtime();
+
+  printf("\n-World of %dx%d cells", args.rows, args.columns);
+  printf("\n-%d iterations", args.iterations);
+  printf("\n-Process time of %.3f seconds", stop-start);
+  printf("\n\nEnd of %s.\n", PACKAGE);
 
   /* Release memory */
   free_memory(nextworld, args.rows);
