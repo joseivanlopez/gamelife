@@ -1,0 +1,2 @@
+node002.cluster.siani.es slots=2
+node003.cluster.siani.es slots=2
