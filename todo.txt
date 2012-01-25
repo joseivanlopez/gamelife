@@ -1,7 +1,0 @@
-Opciones por añadir:
-  xcambiar tiempo de pausa entre iteracion e iteración en la animación.
-  xañadir opción para que guarde en fichero o no.
-  xañadir cálculo de tiempos de ejecucion
-
-  x Opción -t para time --> sólo  muestra tiempos y ningún otro printf.
-  - Opción -p para indicar el número de procesadores.

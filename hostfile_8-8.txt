@@ -1,2 +1,0 @@
-node002.cluster.siani.es slots=8
-node003.cluster.siani.es slots=8
