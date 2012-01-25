@@ -4,6 +4,7 @@
 #include <stdlib.h> /* Standard general utilities                   */
 #include <getopt.h> /* Parsing command-line options                 */
 #include <time.h>   /* Get and manipulate date and time             */
+#include <math.h>   
 #include <omp.h>    /* Shared memory multiprocessing programming    */
 #include <mpi.h>
 
@@ -34,6 +35,7 @@ struct args_t
 
 /* Procedures and functions declaration */
 void gamelife(const struct args_t args);
+void gamelife_mpi_optimized(const struct args_t args);
 void sequential(int **world, int **nextworld, int rows, int columns);
 void openmp(int **world, int **nextworld, int rows, int columns);
 void mpi(int **world, int **nextworld, int rows, int columns, int root);
@@ -111,6 +113,11 @@ int main(int argc, char* argv[])
       gamelife(args);
       MPI_Finalize();
       break;
+    case 3:
+      MPI_Init(&argc, &argv);
+      gamelife_mpi_optimized(args);
+      MPI_Finalize();
+      break;
     default:
       gamelife(args);
   }
@@ -120,11 +127,10 @@ int main(int argc, char* argv[])
 
 
 void gamelife(const struct args_t args) {
-  int iter, row, column, neighbors;
+  int iter, root, rank;
   int **world, **nextworld, **tmpworld;
   FILE *outFile;
   double start, stop; 
-  int root, rank;
   
   root = 0;  
 
@@ -149,12 +155,12 @@ void gamelife(const struct args_t args) {
   /* Initialization of first iteration */
   initialize_world(world, args); 
 
+  start = omp_get_wtime();
+
   /* Print first iteration */
   if(!args.times && rank == root) {
     print_world(world, outFile, -1, args);
   }
-
-  start = omp_get_wtime();
 
   for(iter=0; iter<args.iterations; iter++) {
     switch(args.method) {
@@ -186,17 +192,15 @@ void gamelife(const struct args_t args) {
     printf("%d;%d;%d;%d;%.3f\n", args.method, args.rows, args.columns, args.iterations, stop-start);
   }
   
-  if(!args.times && rank == root)  
+  if(!args.times && rank == root) { 
     printf("\nEnd of %s.\n", PACKAGE);
+    /* Close output file */
+    fclose(outFile);
+  }
 
   /* Release memory */
   free_memory(nextworld, args.rows);
   free_memory(world, args.rows);
-
-  /* Close output file */
-  if(!args.times && rank == root) {
-    fclose(outFile);
-  }
 }
 
 
@@ -238,17 +242,17 @@ void mpi(int **world, int **nextworld, int rows, int columns, int root) {
   MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
   
   np = (numprocs >= rows) ? rows : numprocs; 
-
+  
   /* root envía una parte de la matriz a cada proceso */
   if(rank == root) {
-    numrows = rows/np;
+    size = roundf(rows/(float)np);
     for(prank=0; prank<np; prank++) {
-      first = prank*numrows;
-      last = first + numrows;
-      last = last > rows ? rows : last;
-      size = last - first;
+      first = prank*size;
+      last = first + size;
+      last = (prank == np-1 && last != rows) ? rows : last;
+      numrows = last - first;
       /* Número de filas que se le va a enviar a cada proceso */
-      MPI_Send(&size, 1, MPI_INT, prank, 0, MPI_COMM_WORLD);
+      MPI_Send(&numrows, 1, MPI_INT, prank, 0, MPI_COMM_WORLD);
       for(row=first; row<last; row++) {
        /* Se envía una fila */
         MPI_Send(world[row], columns, MPI_INT, prank, 0, MPI_COMM_WORLD);
@@ -289,8 +293,8 @@ void mpi(int **world, int **nextworld, int rows, int columns, int root) {
   if(rank == root) {
     for(prank=0; prank<np; prank++) {
       first = prank*size;
-      last = first + numrows;
-      last = last > rows ? rows : last;
+      last = first + size;
+      last = (prank == np-1 && last != rows) ? rows : last;
       for(row=first; row<last; row++) {
         MPI_Recv(nextworld[row], columns, MPI_INT, prank, 0, MPI_COMM_WORLD, &status);
       }
@@ -299,6 +303,161 @@ void mpi(int **world, int **nextworld, int rows, int columns, int root) {
       
   free_memory(recvbuf, numrows+2);
   free_memory(sendbuf, numrows);
+}
+
+
+void gamelife_mpi_optimized(const struct args_t args) {
+  int root, rank, prank, prevrank, nextrank, numprocs, np;
+  int first, last, iter, row, column, numrows, size, neighbors;
+  int **world, **localworld, **nextlocalworld, **localworldaux;
+  FILE *outFile;
+  double start, stop; 
+  MPI_Status stats[4], status;
+  MPI_Request reqs[4];
+  
+  root = 0;  
+
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
+
+  /* Number of process */
+  np = (numprocs >= args.rows) ? args.rows : numprocs; 
+  
+  /* Rows of each process */
+  size = roundf(args.rows/(float)np);
+  first = rank*size;
+  last = first + size;
+  last = (rank == np-1 && last != args.rows) ? args.rows : last;
+  numrows = last - first;
+
+  if(rank == root) {
+    /* Open output file */
+    if(!args.times) {
+      outFile = fopen(args.outFileName, "w");
+      if(outFile == NULL) {
+        fprintf(stderr, "%s: Error - Cannot open or create %s\n\n", PACKAGE, args.outFileName);
+        help(EXIT_FAILURE);
+      }
+    }
+
+    /* Allocate memory */
+    world = get_memory(args.rows, args.columns);
+
+    /* Initialization of first iteration */
+    initialize_world(world, args); 
+    
+    start = omp_get_wtime();
+
+    /* Print first iteration */
+    if(!args.times) {
+      print_world(world, outFile, -1, args);
+    }
+
+    /* Root scatters the matrix */
+    for(prank=0; prank<np; prank++) {
+      first = prank*size;
+      last = first + size;
+      last = (prank == np-1 && last != args.rows) ? args.rows : last;
+      /* Se envía cada fila */
+      for(row=first; row<last; row++) {
+        MPI_Send(world[row], args.columns, MPI_INT, prank, 0, MPI_COMM_WORLD);
+      }
+    }
+  }  
+
+  /* Recibe cada fila */
+  localworld = get_memory(numrows+2, args.columns);
+  nextlocalworld = get_memory(numrows+2, args.columns);
+  for(row=1; row<=numrows; row++) {
+    MPI_Recv(localworld[row], args.columns, MPI_INT, root, 0, MPI_COMM_WORLD, &status);
+  }
+
+  prevrank = (rank-1+np)%np;
+  nextrank = (rank+1)%np; 
+  for(iter=0; iter<args.iterations; iter++) {
+    /* Cada proceso envía su primera y última fila y recibe las de otro */
+    MPI_Isend(localworld[1], args.columns, MPI_INT, prevrank, 0, MPI_COMM_WORLD, &reqs[0]);
+    MPI_Isend(localworld[numrows], args.columns, MPI_INT, nextrank, 0, MPI_COMM_WORLD, &reqs[1]);
+    MPI_Irecv(localworld[0], args.columns, MPI_INT, prevrank, 0, MPI_COMM_WORLD, &reqs[2]);
+    MPI_Irecv(localworld[numrows+1], args.columns, MPI_INT, nextrank, 0, MPI_COMM_WORLD, &reqs[3]);
+
+    /* Se procesan filas interiores */
+    if(numrows > 2) {
+      for(row=2; row<numrows; row++) {
+        for(column=0; column<args.columns; column++) {
+          neighbors = alive_neighbors(localworld, numrows+2, args.columns, row, column);
+          if(localworld[row][column] == 0) nextlocalworld[row][column] = neighbors == 3 ? 1 : 0;
+          if(localworld[row][column] == 1) nextlocalworld[row][column] = (neighbors == 2 || neighbors == 3) ? 1 : 0;
+        }
+      }
+    }
+
+    /* Se espera por la fila del proceso anterior */
+    MPI_Wait(&reqs[2], &stats[2]);
+    row = 1;
+    for(column=0; column<args.columns; column++) {
+      neighbors = alive_neighbors(localworld, numrows+2, args.columns, row, column);
+      if(localworld[row][column] == 0) nextlocalworld[row][column] = neighbors == 3 ? 1 : 0;
+      if(localworld[row][column] == 1) nextlocalworld[row][column] = (neighbors == 2 || neighbors == 3) ? 1 : 0;
+    }
+
+    /* Se espera por la fila del proceso siguiente */
+    MPI_Wait(&reqs[3], &stats[3]);
+    row = numrows;
+    for(column=0; column<args.columns; column++) {
+      neighbors = alive_neighbors(localworld, numrows+2, args.columns, row, column);
+      if(localworld[row][column] == 0) nextlocalworld[row][column] = neighbors == 3 ? 1 : 0;
+      if(localworld[row][column] == 1) nextlocalworld[row][column] = (neighbors == 2 || neighbors == 3) ? 1 : 0;
+    }
+
+    /* Se espera hasta que se hayan realizado los envíos */
+    MPI_Wait(&reqs[0], &stats[0]);
+    MPI_Wait(&reqs[1], &stats[1]);
+
+    /* Actualize localworld */
+    localworldaux = localworld;
+    localworld = nextlocalworld;
+    nextlocalworld = localworldaux;
+  }
+
+  /* Se envía el resultado a root */
+  for(row=1; row<=numrows; row++) {
+    MPI_Send(localworld[row], args.columns, MPI_INT, root, 0, MPI_COMM_WORLD);
+  }
+
+  /* root recibe cada fila modificada */ 
+  if(rank == root) {
+    for(prank=0; prank<np; prank++) {
+      first = prank*size;
+      last = first + size;
+      last = (prank == np-1 && last != args.rows) ? args.rows : last;
+      for(row=first; row<last; row++) {
+        MPI_Recv(world[row], args.columns, MPI_INT, prank, 0, MPI_COMM_WORLD, &status);
+      }
+    }
+
+    if(!args.times) {
+      /* Print iteration */
+      print_world(world, outFile, iter, args);
+      printf("\nEnd of %s.\n", PACKAGE);
+      /* Close output file */
+      fclose(outFile);
+    }
+
+    stop = omp_get_wtime();
+
+    if(args.times) {
+      printf("%d;%d;%d;%d;%.3f\n", args.method, args.rows, args.columns, args.iterations, stop-start);
+    }
+
+    /* Release memory */
+    free_memory(world, args.rows);
+  }
+  
+  /* Cada proceso libera su memoria */
+  free_memory(localworld, numrows+2);
+  free_memory(nextlocalworld, numrows+2);
 }
 
 
@@ -405,7 +564,7 @@ void help(int exitval) {
     printf("\t-h\n\t\tprint this help and exit\n\n");
     printf("\t-f infile\n\t\tset intput file\n\n");
     printf("\t-o outfile\n\t\tset output file\n\n");
-    printf("\t-m method\n\t\tprocedure for compute next state (0=sequential, 1=OpenMP, 2=MPI)\n\n");
+    printf("\t-m method\n\t\tprocedure for compute next state (0=sequential, 1=OpenMP, 2=MPI, 3=MPI optimized)\n\n");
     printf("\t-r numrows\n\t\tnumber of rows\n\n");
     printf("\t-c numcolums\n\t\tnumber of columns\n\n");
     printf("\t-a \n\t\tshow animation with a pause time (in miliseconds) between frames\n\n");
@@ -413,11 +572,13 @@ void help(int exitval) {
     printf("\t-t\n\t\ttime measure\n\n");
     
     printf("EXAMPLES\n");
-    printf("\tWith Sequential or openMP mode:\n");
+    printf("\tWith Sequential or openMP method:\n");
     printf("\t$ ./gamelife [options] -m [0|1]\n");
     printf("\t$ OMP_NUM_THREADS=N ./gamelife [options] -m 1\n\n");
-    printf("\tWith MPI mode:\n");
+    printf("\tWith MPI method:\n");
     printf("\t$ mpirun -np N gamelife [options] -m 2\n\n");
+    printf("\tWith MPI optimized method:\n");
+    printf("\t$ mpirun -np N gamelife [options] -m 3\n\n");
   }
   
   exit(exitval);
