@@ -217,6 +217,7 @@ void sequential(int **world, int **nextworld, int rows, int columns) {
   }
 }
 
+
 /* Cellular automata OpenMP implementation procedure */
 void openmp(int **world, int **nextworld, int rows, int columns) {
   int row, column, neighbors;
@@ -232,6 +233,7 @@ void openmp(int **world, int **nextworld, int rows, int columns) {
 }
 
 
+/* Cellular automata MPI implementation procedure */
 void mpi(int **world, int **nextworld, int rows, int columns, int root) {
   int rank, prank, prevrank, nextrank, numprocs, np;
   int first, last, row, column, numrows, size, neighbors;
@@ -243,7 +245,7 @@ void mpi(int **world, int **nextworld, int rows, int columns, int root) {
   
   np = (numprocs >= rows) ? rows : numprocs; 
   
-  /* root envía una parte de la matriz a cada proceso */
+  /* root scatters the matrix */
   if(rank == root) {
     size = roundf(rows/(float)np);
     for(prank=0; prank<np; prank++) {
@@ -251,25 +253,25 @@ void mpi(int **world, int **nextworld, int rows, int columns, int root) {
       last = first + size;
       last = (prank == np-1 && last != rows) ? rows : last;
       numrows = last - first;
-      /* Número de filas que se le va a enviar a cada proceso */
+      /* Send the number of rows to each process */
       MPI_Send(&numrows, 1, MPI_INT, prank, 0, MPI_COMM_WORLD);
       for(row=first; row<last; row++) {
-       /* Se envía una fila */
+       /* Send each row */
         MPI_Send(world[row], columns, MPI_INT, prank, 0, MPI_COMM_WORLD);
       }
     }
   }  
 
-  /* Recibe el número de filas */
+  /* Receive number of rows */
   MPI_Recv(&numrows, 1, MPI_INT, root, 0, MPI_COMM_WORLD, &status);
   
-  /* Recibe cada fila */
   recvbuf = get_memory(numrows+2, columns);
   for(row=1; row<=numrows; row++) {
+    /* Receive each row */
     MPI_Recv(recvbuf[row], columns, MPI_INT, root, 0, MPI_COMM_WORLD, &status);
   }
   
-  /* Cada proceso envía su primera y última fila y recibe las del resto */
+  /* Each process sends and receives its first and last row */
   prevrank = (rank-1+np)%np;
   nextrank = (rank+1)%np; 
   
@@ -278,7 +280,7 @@ void mpi(int **world, int **nextworld, int rows, int columns, int root) {
   MPI_Recv(recvbuf[0], columns, MPI_INT, prevrank, 0, MPI_COMM_WORLD, &status);
   MPI_Recv(recvbuf[numrows+1], columns, MPI_INT, nextrank, 0, MPI_COMM_WORLD, &status);
 
-  /* Cada proceso realiza los cálculos con su parte de la matriz */
+  /* Each process works with its local matrix */ 
   sendbuf = get_memory(numrows, columns);
   for(row=1; row<=numrows; row++) {
     for(column=0; column<columns; column++) {
@@ -289,7 +291,7 @@ void mpi(int **world, int **nextworld, int rows, int columns, int root) {
     MPI_Send(sendbuf[row-1], columns, MPI_INT, root, 0, MPI_COMM_WORLD);
   }  
 
-  /* root recibe cada fila modificada */ 
+  /* Root receives each modified row */ 
   if(rank == root) {
     for(prank=0; prank<np; prank++) {
       first = prank*size;
@@ -366,7 +368,7 @@ void gamelife_mpi_optimized(const struct args_t args) {
     }
   }  
 
-  /* Recibe cada fila */
+  /* Receive each row */
   localworld = get_memory(numrows+2, args.columns);
   nextlocalworld = get_memory(numrows+2, args.columns);
   for(row=1; row<=numrows; row++) {
@@ -376,13 +378,13 @@ void gamelife_mpi_optimized(const struct args_t args) {
   prevrank = (rank-1+np)%np;
   nextrank = (rank+1)%np; 
   for(iter=0; iter<args.iterations; iter++) {
-    /* Cada proceso envía su primera y última fila y recibe las de otro */
+    /* Each process sends and receives its first and last row */
     MPI_Isend(localworld[1], args.columns, MPI_INT, prevrank, 0, MPI_COMM_WORLD, &reqs[0]);
     MPI_Isend(localworld[numrows], args.columns, MPI_INT, nextrank, 0, MPI_COMM_WORLD, &reqs[1]);
     MPI_Irecv(localworld[0], args.columns, MPI_INT, prevrank, 0, MPI_COMM_WORLD, &reqs[2]);
     MPI_Irecv(localworld[numrows+1], args.columns, MPI_INT, nextrank, 0, MPI_COMM_WORLD, &reqs[3]);
 
-    /* Se procesan filas interiores */
+    /* First work with internal rows */
     if(numrows > 2) {
       for(row=2; row<numrows; row++) {
         for(column=0; column<args.columns; column++) {
@@ -393,7 +395,7 @@ void gamelife_mpi_optimized(const struct args_t args) {
       }
     }
 
-    /* Se espera por la fila del proceso anterior */
+    /* Wait for the first row */
     MPI_Wait(&reqs[2], &stats[2]);
     row = 1;
     for(column=0; column<args.columns; column++) {
@@ -402,7 +404,7 @@ void gamelife_mpi_optimized(const struct args_t args) {
       if(localworld[row][column] == 1) nextlocalworld[row][column] = (neighbors == 2 || neighbors == 3) ? 1 : 0;
     }
 
-    /* Se espera por la fila del proceso siguiente */
+    /* Wait for the last row */
     MPI_Wait(&reqs[3], &stats[3]);
     row = numrows;
     for(column=0; column<args.columns; column++) {
@@ -411,7 +413,7 @@ void gamelife_mpi_optimized(const struct args_t args) {
       if(localworld[row][column] == 1) nextlocalworld[row][column] = (neighbors == 2 || neighbors == 3) ? 1 : 0;
     }
 
-    /* Se espera hasta que se hayan realizado los envíos */
+    /* Wait to send rows */
     MPI_Wait(&reqs[0], &stats[0]);
     MPI_Wait(&reqs[1], &stats[1]);
 
@@ -421,12 +423,12 @@ void gamelife_mpi_optimized(const struct args_t args) {
     nextlocalworld = localworldaux;
   }
 
-  /* Se envía el resultado a root */
+  /* Send modified rows to root */
   for(row=1; row<=numrows; row++) {
     MPI_Send(localworld[row], args.columns, MPI_INT, root, 0, MPI_COMM_WORLD);
   }
 
-  /* root recibe cada fila modificada */ 
+  /* Root receives each modified row */ 
   if(rank == root) {
     for(prank=0; prank<np; prank++) {
       first = prank*size;
@@ -455,7 +457,7 @@ void gamelife_mpi_optimized(const struct args_t args) {
     free_memory(world, args.rows);
   }
   
-  /* Cada proceso libera su memoria */
+  /* Each process releases its memory */
   free_memory(localworld, numrows+2);
   free_memory(nextlocalworld, numrows+2);
 }
@@ -610,6 +612,7 @@ int** get_memory(int rows, int columns)
 
   return matrix;
 }
+
 
 /* Function for release blocks of memory back to the system */
 void free_memory(int **matrix, int rows) {
