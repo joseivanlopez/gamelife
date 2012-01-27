@@ -193,7 +193,7 @@ void gamelife(const struct args_t args) {
   }
   
   if(!args.times && rank == root) { 
-    printf("\nEnd of %s.\n", PACKAGE);
+    printf("\nEnd of %s.\n\n", PACKAGE);
     /* Close output file */
     fclose(outFile);
   }
@@ -441,7 +441,7 @@ void gamelife_mpi_optimized(const struct args_t args) {
     if(!args.times) {
       /* Print iteration */
       print_world(world, outFile, iter, args);
-      printf("\nEnd of %s.\n", PACKAGE);
+      printf("\nEnd of %s.\n\n", PACKAGE);
       /* Close output file */
       fclose(outFile);
     }
@@ -523,8 +523,10 @@ void print_world(int **world, FILE *outFile, int iteration, const struct args_t 
   char spinner[4]={'/','-','\\','|'};
 
   /* Restore cursor after the first iteration */
-  if(args.animation && iteration >= 0) printf("\033[%dA", args.rows);
-  
+  if(args.animation && iteration >= 0) printf("\033[%dA", args.rows+1);
+
+  if(args.animation) printf("\n");
+
   if(!args.animation) {
     printf("%c\b", spinner[(iteration+1)%sizeof(spinner)]);
     fflush(stdout);
