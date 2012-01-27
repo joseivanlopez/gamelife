@@ -534,7 +534,7 @@ void print_world(int **world, FILE *outFile, int iteration, const struct args_t 
     for(column=0; column<args.columns; column++) {
       c = world[row][column] == 1 ? '*' : '.';
       fputc(c, outFile);
-      if(args.animation) if(world[row][column] == 1) printf("\033[1;40m \033[0m"); else printf("\033[1;47m \033[0m");
+      if(args.animation) if(world[row][column] == 1) printf("\033[1;47m  \033[0m"); else printf("\033[1;44m  \033[0m");
     }
     fputc('\n', outFile);
     if(args.animation) printf("\033[K\n"); // clear and next line
