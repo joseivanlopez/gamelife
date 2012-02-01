@@ -276,9 +276,10 @@ void mpi(int **world, int **nextworld, int rows, int columns, int root) {
   nextrank = (rank+1)%np; 
   
   MPI_Send(recvbuf[1], columns, MPI_INT, prevrank, 0, MPI_COMM_WORLD);
-  MPI_Send(recvbuf[numrows], columns, MPI_INT, nextrank, 0, MPI_COMM_WORLD);
-  MPI_Recv(recvbuf[0], columns, MPI_INT, prevrank, 0, MPI_COMM_WORLD, &status);
+  MPI_Send(recvbuf[numrows], columns, MPI_INT, nextrank, 1, MPI_COMM_WORLD);
   MPI_Recv(recvbuf[numrows+1], columns, MPI_INT, nextrank, 0, MPI_COMM_WORLD, &status);
+  MPI_Recv(recvbuf[0], columns, MPI_INT, prevrank, 1, MPI_COMM_WORLD, &status);
+
 
   /* Each process works with its local matrix */ 
   sendbuf = get_memory(numrows, columns);
@@ -379,9 +380,9 @@ void gamelife_mpi_optimized(const struct args_t args) {
   for(iter=0; iter<args.iterations; iter++) {
     /* Each process sends and receives its first and last row */
     MPI_Isend(localworld[1], args.columns, MPI_INT, prevrank, 0, MPI_COMM_WORLD, &reqs[0]);
-    MPI_Isend(localworld[numrows], args.columns, MPI_INT, nextrank, 0, MPI_COMM_WORLD, &reqs[1]);
-    MPI_Irecv(localworld[0], args.columns, MPI_INT, prevrank, 0, MPI_COMM_WORLD, &reqs[2]);
+    MPI_Isend(localworld[numrows], args.columns, MPI_INT, nextrank, 1, MPI_COMM_WORLD, &reqs[1]);
     MPI_Irecv(localworld[numrows+1], args.columns, MPI_INT, nextrank, 0, MPI_COMM_WORLD, &reqs[3]);
+    MPI_Irecv(localworld[0], args.columns, MPI_INT, prevrank, 1, MPI_COMM_WORLD, &reqs[2]);
 
     /* First work with internal rows */
     if(numrows > 2) {
