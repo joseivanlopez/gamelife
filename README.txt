@@ -11,3 +11,10 @@ To execute:
   
   With MPI optimized method:
   $ mpirun -np N gamelife [options] -m 3
+
+Authors
+  José Iván López González
+  Jacob David Rodríguez Bordón
+  
+
+https://github.com/joseivanlopez/gamelife
